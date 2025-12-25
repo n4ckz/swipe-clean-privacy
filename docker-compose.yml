@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: swipe-clean-nginx
+    restart: unless-stopped
+    volumes:
+      - swipe-clean-/usr/share/nginx/html:ro
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.swipe-clean.rule=Host(`swipe-clean.nackz.dev`)"
+      - "traefik.http.routers.swipe-clean.entrypoints=websecure"
+      - "traefik.http.routers.swipe-clean.tls=true"
+      - "traefik.http.routers.swipe-clean.tls.certresolver=le"
+      - "traefik.http.services.swipe-clean.loadbalancer.server.port=80"
+      - "traefik.http.routers.swipe-clean-privacy.rule=Host(`swipe-clean.nackz.dev`) && PathPrefix(`/privacy`)"
+      - "traefik.http.routers.swipe-clean-privacy.entrypoints=websecure"
+      - "traefik.http.routers.swipe-clean-privacy.tls=true"
+      - "traefik.http.routers.swipe-clean-privacy.tls.certresolver=le"
+      - "traefik.http.services.swipe-clean-privacy.loadbalancer.server.port=80"
+    depends_on:
+      fetcher:
+        condition: service_healthy
+
+  fetcher:
+    image: alpine/git:latest
+    container_name: swipe-clean-fetcher
+    restart: unless-stopped
+    environment:
+      - GIT_REPO=https://n4ckz:${GIT_TOKEN}@github.com/n4ckz/swipe-clean-privacy.git
+    volumes:
+      - swipe-clean-/data
+    command: >
+      sh -c "
+        git clone $${GIT_REPO} /data || (rm -rf /data/* && git clone $${GIT_REPO} /data) &&
+        while true; do sleep 300; git -C /data pull origin main; done"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/data/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  swipe-clean-
+
+networks:
+  web:
+    name: traefik_web
+    external: true
